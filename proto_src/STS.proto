@@ -1,5 +1,6 @@
-option java_package = "org.lsfn.nebula";
+option java_package = "org.lsfn.common";
 option java_outer_classname = "STS";
+package common;
 
 message STSup {
     message RCon {
@@ -12,7 +13,7 @@ message STSup {
             REJOIN = 1;
         }
         
-        optional JoinType type = 1;
+        required JoinType type = 1;
         optional string rejoinToken = 2;
     }
 
@@ -31,27 +32,53 @@ message STSup {
         optional bool readyState = 1;
         optional string shipName = 2;
     }
-    
-    message Piloting {
-        optional bool turnAnti = 1;
-        optional bool turnClock = 2;
-        optional bool thrustLeft = 3;
-        optional bool thrustRight = 4;
-        optional bool thrustForward = 5;
-        optional bool thrustBackward = 6;
+
+    message Subscribe {
+        required string nodeName = 1;
+        repeated Subscribe children = 2;
     }
     
+    message Reactor {
+        optional double reactantIntroduction = 1;
+        optional double coolantIntroduction = 2;
+    }
+
+    message PowerDistribution {
+        optional bool leftEngine = 1;
+        optional bool rightEngine = 2;
+        optional bool forwardLeftThruster = 3;
+        optional bool forwardRightThruster = 4;
+        optional bool rearLeftThruster = 5;
+        optional bool rearRightThruster = 6;
+    }
+
+    message Engines {
+        optional double leftEngineThrottle = 1;
+        optional double rightEngineThrottle = 2;
+    }
+
+    message Thrusters {
+        optional double forwardLeft = 1;
+        optional double forwardRight = 2;
+        optional double rearLeft = 3;
+        optional double rearRight = 4;
+    }
+
     optional RCon rcon = 1;
-    optional JoinRequest join = 2;
+    optional JoinRequest joinRequest = 2;
     optional Connection connection = 3;
     optional Lobby lobby = 4;
-    optional Piloting piloting = 5;
+    optional Subscribe subscribe = 5;
+    optional Reactor reactor = 6;
+    optional PowerDistribution powerDistribution = 7;
+    optional Engines engines = 8;
+    optional Thrusters thrusters = 9;
 }
 
 message STSdown {
     message JoinInfo {
         required bool allowJoin = 1;
-        optional string gameIDtoken = 2;
+        required string gameIDtoken = 2;
     }
 
     message JoinResponse {
@@ -97,9 +124,41 @@ message STSdown {
         repeated SpaceObject spaceObjects = 1;
     }
     
+    message Reactor {
+        optional double reactantIntroduction = 1;
+        optional double coolantIntroduction = 2;
+        optional double powerOutput = 3;
+        optional double heatLevel = 4;
+    }
+
+    message PowerDistribution {
+        optional bool leftEngine = 1;
+        optional bool rightEngine = 2;
+        optional bool forwardLeftThruster = 3;
+        optional bool forwardRightThruster = 4;
+        optional bool rearLeftThruster = 5;
+        optional bool rearRightThruster = 6;
+    }
+
+    message Engines {
+        optional double leftEngineThrottle = 1;
+        optional double rightEngineThrottle = 2;
+    }
+
+    message Thrusters {
+        optional double forwardLeft = 1;
+        optional double forwardRight = 2;
+        optional double rearLeft = 3;
+        optional double rearRight = 4;
+    }
+
     optional Connection connection = 1;
     optional JoinInfo joinInfo = 2;
     optional JoinResponse joinResponse = 3;
     optional Lobby lobby = 4;
     optional VisualSensors visualSensors = 5;
+    optional Reactor reactor = 6;
+    optional PowerDistribution powerDistribution = 7;
+    optional Engines engines = 8;
+    optional Thrusters thrusters = 9;
 }
