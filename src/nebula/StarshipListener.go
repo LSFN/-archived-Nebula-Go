@@ -11,53 +11,55 @@ import (
 
 type StarshipListener struct {
 	conn     *net.TCPConn
-	Messages chan STSup
+	Messages chan *common.STSup
 }
 
 func (listener *StarshipListener) Listen() {
 	var lengthToRead uint64
-	var lengthVariant := new(common.Variant)
+	lengthVariant := new(common.Variant)
 	var currentReadBuffer []byte
 	for {
 		var data []byte
-		bytes, err := listener.conn.Read(data)
+		var numBytes uint64
+		n, err := listener.conn.Read(data)
+		numBytes = uint64(n)
 		if err != nil {
-			listener.Messages.Close()
+			close(listener.Messages)
 			break
 		}
-		for bytes > 0 {
+		for numBytes > 0 {
 			if lengthToRead == 0 {
 				for _, b := range data {
 					lengthVariant.ConnectByte(b)
 					if lengthVariant.IsComplete() {
-						lengthToRead = lengthVariant.ToUint64()
+						lengthToRead = lengthVariant.Uint64()
 						lengthVariant.Reset()
 						break
 					}
 				}
 			}
 			if lengthToRead > 0 {
-				if bytes >= lengthToRead {
+				if numBytes >= lengthToRead {
 					currentReadBuffer = append(currentReadBuffer, data[:lengthToRead]...)
 					data = data[lengthToRead:]
-					bytes -= lengthToRead
+					numBytes -= lengthToRead
 					lengthToRead = 0
-					var upMessage common.STSup = new(common.STSup)
+					var upMessage *common.STSup = new(common.STSup)
 					proto.Unmarshal(currentReadBuffer, upMessage)
 					listener.Messages <- upMessage
 				} else {
 					currentReadBuffer = append(currentReadBuffer, data...)
 					data = nil
-					bytes -= lengthToRead
-					lengthToRead -= bytes
-					bytes = 0
+					numBytes -= lengthToRead
+					lengthToRead -= numBytes
+					numBytes = 0
 				}
 			}
 		}
 	}
 }
 
-func (listener *StarshipListener) readSingleMessage() (common.STSup, error) {
+func (listener *StarshipListener) receiveSingleMessage() (*common.STSup, error) {
 	// Read off the length of the message into a variant
 	lengthVariant := new(common.Variant)
 	singleByte := make([]byte, 1)
@@ -72,7 +74,7 @@ func (listener *StarshipListener) readSingleMessage() (common.STSup, error) {
 	}
 
 	// Receive a message of the stated length
-	receiverSlice := make([]byte, lengthVariant.ToUint64)
+	receiverSlice := make([]byte, lengthVariant.Uint64)
 	var bytes int
 	for bytes < len(receiverSlice) {
 		x, err := listener.conn.Read(receiverSlice[bytes:])
@@ -92,14 +94,14 @@ func (listener *StarshipListener) readSingleMessage() (common.STSup, error) {
 	return result, err
 }
 
-func (listener *StarshipListener) SendMessage(downMessage common.STSdown) {
+func (listener *StarshipListener) SendMessage(downMessage *common.STSdown) {
 	err := listener.sendSingleMessage(downMessage)
 	if err != nil {
 		listener.Disconnect()
 	}
 }
 
-func (listener *StarshipListener) sendSingleMessage(downMessage common.STSdown) error {
+func (listener *StarshipListener) sendSingleMessage(downMessage *common.STSdown) error {
 	rawMessage, err := proto.Marshal(downMessage)
 	if err != nil {
 		return err
@@ -108,7 +110,7 @@ func (listener *StarshipListener) sendSingleMessage(downMessage common.STSdown) 
 	var bytes int
 	variantLength := new(common.Variant)
 	variantLength.FromUint64(len(rawMessage))
-	rawLength := variantLength.ToBytes()
+	rawLength := variantLength.Bytes()
 	for bytes < len(rawLength) {
 		x, err := listener.conn.Write(rawLength[bytes:])
 		if err != nil {
@@ -131,78 +133,80 @@ func (listener *StarshipListener) sendSingleMessage(downMessage common.STSdown) 
 
 func (listener *StarshipListener) Disconnect() {
 	listener.conn.Close()
-	listener.Messages.Close()
+	close(listener.Messages)
 }
 
 // TODO possibly disconnect
-func (listener *StarshipListener) Handshake(gameID string, allowJoin bool, rejoinIDs []string) bool {
+func (listener *StarshipListener) Handshake(gameID string, allowJoin bool, rejoinIDs map[string]int) string {
 	// Send the JoinInfo message
 	joinInfoMessage := &common.STSdown{
-		JoinInfo := &common.STSdown_JoinInfo{
-			AllowJoin: allowJoin
-			GameIDToken: gameID
-		}
+		JoinInfo: &common.STSdown_JoinInfo{
+			AllowJoin:   &allowJoin,
+			GameIDtoken: &gameID,
+		},
 	}
 	err := listener.sendSingleMessage(joinInfoMessage)
 	// if joins are not allowed then when allowJoin is false, handshakes will end here
 	if err != nil {
-		return false
+		return ""
 	}
 
 	// Receive the JoinRequest message
 	joinRequestMessage, err := listener.receiveSingleMessage()
 	if err != nil {
-		return false
+		return ""
 	}
-	if !joinRequestMessage.HasJoinRequest() {
-		return false
+	if joinRequestMessage.JoinRequest == nil {
+		return ""
 	}
 
 	// Send the JoinResponse message
-	joinType := joinRequestMessage.GetJoinRequest.GetJoinType()
-	if(joinType == common.STSup_JoinRequest_JOIN) {
-		if allowJoin {}
-			id string := uuid.New()
+	joinType := joinRequestMessage.GetJoinRequest().GetType()
+	var joinAccept = common.STSdown_JoinResponse_JOIN_ACCEPTED
+	var joinReject = common.STSdown_JoinResponse_JOIN_REJECTED
+	var rejoinAccept = common.STSdown_JoinResponse_REJOIN_ACCEPTED
+	if joinType == common.STSup_JoinRequest_JOIN {
+		if allowJoin {
+			id := uuid.New()
 			listener.sendSingleMessage(&common.STSdown{
 				JoinResponse: &common.STSdown_JoinResponse{
-					Type: common.STSdown_JoinResponse_JOIN_ACCEPTED
-					RejoinToken: id
-				}
-			})	
-			return true		
-		} else {}
-			listener.sendSingleMessage(&common.STSdown{
-				JoinResponse: &common.STSdown_JoinResponse{
-					Type: common.STSdown_JoinResponse_JOIN_REJECTED
-				}
+					Type:        &joinAccept,
+					RejoinToken: &id,
+				},
 			})
-			return false
-		}
-	} else {
-		successfulRejoin bool = false;
-		if joinRequestMessage.HasRejoinID() {
-			rejoinID = joinRequestMessage.GetRejoinID()
-			for _, orphanID := range rejoinIDs {
-				if rejoinID == orphanID {
-					successfulRejoin = true
-				}
-			}
-		}
-		if successfulRejoin {
-			listener.sendSingleMessage(&common.STSdown{
-				JoinResponse: &common.STSdown_JoinResponse{
-					Type: common.STSdown_JoinResponse_REJOIN_ACCEPTED
-					RejoinToken: joinRequestMessage.GetRejoinID()
-				}
-			})
-			return true
+			return id
 		} else {
 			listener.sendSingleMessage(&common.STSdown{
 				JoinResponse: &common.STSdown_JoinResponse{
-					Type: common.STSdown_JoinResponse_JOIN_REJECTED
-				}
+					Type: &joinReject,
+				},
 			})
-			return false
+			return ""
+		}
+	} else {
+		var successfulRejoin bool = false
+		if joinRequestMessage.GetJoinRequest().RejoinToken != nil {
+			rejoinID := joinRequestMessage.GetJoinRequest().GetRejoinToken()
+			if _, ok := rejoinIDs[rejoinID]; ok {
+				successfulRejoin = true
+			}
+		}
+		if successfulRejoin {
+			rejoinID := joinRequestMessage.GetJoinRequest().GetRejoinToken()
+			listener.sendSingleMessage(&common.STSdown{
+				JoinResponse: &common.STSdown_JoinResponse{
+					Type:        &rejoinAccept,
+					RejoinToken: &rejoinID,
+				},
+			})
+			return joinRequestMessage.GetJoinRequest().GetRejoinToken()
+		} else {
+			listener.sendSingleMessage(&common.STSdown{
+				JoinResponse: &common.STSdown_JoinResponse{
+					Type: &joinReject,
+				},
+			})
+			return ""
 		}
 	}
 }

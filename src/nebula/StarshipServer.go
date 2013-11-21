@@ -1,47 +1,56 @@
 package nebula
 
 import (
+	"fmt"
 	"net"
 
 	"code.google.com/p/uuid"
-	"code.google.com/p/goprotobuf/proto"
 
 	"lsfn/common"
 )
 
 type StarshipServer struct {
-	unjoinedClients []*StarshipListener
-	orphanShipIDs []string
-	joinedClients map[string]*StarshipListener
-	networkChannels map[string]chan
-	listenConnection net.TCPListener
-	gameID string
-	allowJoin bool
+	unjoinedClients  map[*StarshipListener]int
+	orphanShipIDs    map[string]int
+	joinedClients    map[string]*StarshipListener
+	networkChannels  map[string]chan *common.STSup
+	listenConnection *net.TCPListener
+	gameID           string
+	allowJoin        bool
 }
 
-func (s *StarshipServer) handleConnectingStarship(conn) {
+func (s *StarshipServer) handleConnectingStarship(conn *net.TCPConn) {
 	conn.SetKeepAlive(true)
-	starship := &StarshipListener{conn}
-	append(s.unjoinedClients, starship)
-	
-	starship.SendMessage(joinInfoMessage)
-	go starship.Listen()
+	starship := &StarshipListener{conn: conn}
+	s.unjoinedClients[starship] = 1
+	shipID := starship.Handshake(s.gameID, s.allowJoin, s.orphanShipIDs)
+	if shipID != "" {
+		delete(s.unjoinedClients, starship)
+		s.joinedClients[shipID] = starship
+		fmt.Println("Client with id " + shipID + " joined successfully")
+		go starship.Listen()
+	} else {
+		delete(s.unjoinedClients, starship)
+		starship.Disconnect()
+	}
 }
 
 func (s *StarshipServer) Listen() {
-	s.listenConnection, err := net.Listen("tcp", ":39461")
+	var err error
+	conn, err := net.Listen("tcp", ":39461")
+	s.listenConnection = conn.(*net.TCPListener)
 	if err != nil {
-		return false
+		return
 	}
-	gameID = uuid.New()
-	allowJoin = true
+	s.gameID = uuid.New()
+	s.allowJoin = true
 	for {
-		conn, err := ln.Accept()
+		conn, err := s.listenConnection.Accept()
 		if err != nil {
 			s.shutDown()
 			break
 		}
-		handleConnectingStarship(conn)
+		s.handleConnectingStarship(conn.(*net.TCPConn))
 	}
 }
 
@@ -54,5 +63,5 @@ func (s *StarshipServer) shutDown() {
 }
 
 func (s *StarshipServer) processIncomingMessages() {
-	
+
 }
